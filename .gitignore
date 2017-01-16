@@ -1,8 +1,7 @@
 .idea
-*.pyc
+MNIST_data
 tmp
-ex2.pdf
-data_split.gz
+*.pyc
 report
 .dropbox
 desktop.ini
