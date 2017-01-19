@@ -6,13 +6,13 @@ import matplotlib.pyplot as plt
 # Hyper-parameters
 X_d = 4
 NOISE = .01
-LAMB = 0.0
+LAMB = 0.1
 BETA1 = .8
 BETA2 = .9
 EPS = 1e-4
 BATCH_SIZE = 10
 TRAINING_EPOCHS = 100
-LEARNING_RATE = lambda e: .01 if e < 50 else 0.0001 # if e < 75 else 0.00001
+LEARNING_RATE = lambda e: .01 if e < 50 else 0.0001
 TRAIN_SET_SIZE = 2000
 TEST_SET_SIZE = 200
 
