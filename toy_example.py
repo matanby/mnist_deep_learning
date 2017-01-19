@@ -10,9 +10,9 @@ LAMB = 0.0
 BETA1 = .8
 BETA2 = .9
 EPS = 1e-4
-BATCH_SIZE = 50
-TRAINING_EPOCHS = 1000
-LEARNING_RATE = lambda e: .001 if e < 300 else 0.0001
+BATCH_SIZE = 10
+TRAINING_EPOCHS = 100
+LEARNING_RATE = lambda e: .01 if e < 50 else 0.0001 # if e < 75 else 0.00001
 TRAIN_SET_SIZE = 2000
 TEST_SET_SIZE = 200
 
@@ -36,7 +36,6 @@ models = {
     'lin': {
         i: {
             'w': None,
-            'predict': lambda x: np.dot(models['lin'][i]['w'], x.T),
             'train_loss': [],
             'test_loss': [],
         }
@@ -44,7 +43,6 @@ models = {
     },
     'cnn': {
         i: {
-            'predict': lambda x: forward(models['cnn'][i], x)['p'],
             'train_loss': [],
             'test_loss': [],
         }
@@ -54,19 +52,27 @@ models = {
 
 
 # plots charts
-def plot_charts(model):
+def plot_charts(model, model_name):
     for fi in model:
-        plt.subplot(3, 2, fi * 2 + 1)
-        l = len(model[fi]['train_loss'])
-        plt.plot(np.arange(l), model[fi]['train_loss'], np.arange(l), model[fi]['test_loss'], lw=2)
+        ax = plt.subplot(3, 2, fi * 2 + 1)
+        ax.set_title('f_%d' % fi)
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Loss')
+        l1, = plt.plot(model[fi]['train_loss'], lw=2, label='Train Loss')
+        l2, = plt.plot(model[fi]['test_loss'], lw=2, label='Test Loss')
+        plt.legend(handles=[l1, l2])
         plt.ylim([0, 200])
-        plt.subplot(3, 2, fi * 2 + 2)
-        # plt.scatter(np.dot(model[fi]['w'], x_test.T), y_test[fi])
-        plt.scatter(forward(model[fi], x_test)['p'], y_test[fi])
-        # plt.scatter(model[fi]['predict'](x_test), y_test[fi])
+        ax = plt.subplot(3, 2, fi * 2 + 2)
+        ax.set_title('f_%d' % fi)
+        ax.set_xlabel('y_hat')
+        ax.set_ylabel('y')
+        if model_name == 'lin':
+            plt.scatter(np.dot(model[fi]['w'], x_test.T), y_test[fi])
+        else:
+            plt.scatter(forward(model[fi], x_test)['p'], y_test[fi])
         plt.xlim(-20, 20)
         plt.ylim(-20, 20)
-        # plt.axis('equal')
+    plt.tight_layout()
     plt.show()
 
 
@@ -90,17 +96,6 @@ def forward(model, x):
 def backprop(model, y, fwd):
     """Return the derivative of the loss w.r.t. model"""
 
-    u = model['u']
-    w1 = model['w1']
-    w2 = model['w2']
-
-    # x = fwd['x']
-    # o1 = fwd['o1']
-    # o2 = fwd['o2']
-    # m = fwd['m']
-    # p = fwd['p']
-    # y = y
-
     x = fwd['x'].mean(axis=0)
     o1 = fwd['o1'].mean(axis=0).T
     o2 = fwd['o2'].mean(axis=0).T
@@ -108,8 +103,8 @@ def backprop(model, y, fwd):
     p = fwd['p'].mean(axis=0)
     y = y.mean(axis=0)
 
+    u = model['u']
     dl_du = 2 * (p - y) * m
-
     dl_dp = 2 * (p - y)
 
     dp_dm1 = u.T[:2]
@@ -179,20 +174,23 @@ def train_linear():
         model = models['lin'][fi]
         model['w'] = np.zeros(X_d)
         for ei in range(TRAINING_EPOCHS):
-            for bi in range(0, len(y_train[fi]), BATCH_SIZE):
+            train_loss = 0.0
+            n_batches = len(y_train[fi]) // BATCH_SIZE
+            for bi in range(n_batches):
                 idx = np.random.randint(0, len(y_train[fi]), BATCH_SIZE)
                 xx, yy = x_train[idx, :], y_train[fi][idx]
                 p = model['w'].dot(xx.T)
-                l = np.sum((p - yy)**2 + LAMB * np.linalg.norm(model['w'], ord=2)**2) / BATCH_SIZE
-                # dl_dp = ?
+                batch_loss = np.sum((p - yy)**2 + LAMB * np.linalg.norm(model['w'], ord=2)**2) / BATCH_SIZE
                 a = matlib.repmat(2 * (p - yy), 4, 1).T
                 b = np.multiply(a, xx) + 2 * LAMB * np.linalg.norm(model['w'], ord=2)
                 dl_dw = np.mean(b, axis=0)
                 m_t = BETA1 * m_t + (1 - BETA1) * dl_dw
                 v_t = BETA2 * v_t + (1 - BETA2) * dl_dw ** 2
                 model['w'] -= LEARNING_RATE(ei) * (m_t / (1 - BETA1)) / (np.sqrt(v_t / (1 - BETA2)) + EPS)
-                model['train_loss'].append(l)
-                model['test_loss'].append(np.mean((y_test[fi] - np.dot(x_test, model['w'])) ** 2))
+                train_loss += batch_loss / n_batches
+            model['train_loss'].append(train_loss)
+            model['test_loss'].append(np.mean((y_test[fi] - np.dot(x_test, model['w'])) ** 2))
+            print('fi:', fi, 'epoch:', ei, 'loss:', model['test_loss'][-1])
 
 
 def train_cnn():
@@ -204,11 +202,13 @@ def train_cnn():
         model['w2'] = theta[3:6]
         model['u'] = theta[6:]
         for ei in range(TRAINING_EPOCHS):
-            for bi in range(0, len(y_train[fi]), BATCH_SIZE):
+            train_loss = 0.0
+            n_batches = len(y_train[fi]) // BATCH_SIZE
+            for bi in range(n_batches):
                 idx = np.random.randint(0, len(y_train[fi]), BATCH_SIZE)
                 xx, yy = x_train[idx, :], y_train[fi][idx]
                 fwd = forward(model, xx)
-                l = np.sum((fwd['p'] - yy) ** 2) / BATCH_SIZE
+                batch_loss = np.sum((fwd['p'] - yy) ** 2) / BATCH_SIZE
                 dl_dtheta = backprop(model, yy, fwd).reshape(10, )
                 dl_dtheta += LAMB * theta
                 m_t = BETA1 * m_t + (1 - BETA1) * dl_dtheta
@@ -217,30 +217,15 @@ def train_cnn():
                 model['w1'] = theta[:3]
                 model['w2'] = theta[3:6]
                 model['u'] = theta[6:]
-                model['train_loss'].append(l)
-                model['test_loss'].append(np.mean((y_test[fi] - forward(model, x_test)['p']) ** 2))
+                train_loss += batch_loss / n_batches
+            model['train_loss'].append(train_loss)
+            model['test_loss'].append(np.mean((y_test[fi] - forward(model, x_test)['p']) ** 2))
             print('fi:', fi, 'epoch:', ei, 'loss:', model['test_loss'][-1])
 
 
 if __name__ == '__main__':
-    # train_linear()
-    # plot_charts(models['lin'])
-    train_cnn()
-    plot_charts(models['cnn'])
+    train_linear()
+    plot_charts(models['lin'], 'lin')
 
-    # model = {
-    #     'u': np.array([-1, 1, -1, 1]),
-    #     'w1': np.array([1, -1, 2]),
-    #     'w2': np.array([0, 2, 1]),
-    # }
-    #hpv
-    # fwd = {
-    #     'm': np.array([5, 6, 2, 3]).T,
-    #     'p': np.array([2]).T,
-    #     'x': np.array([1, -1, 2, -2]).T,
-    #     'o1': np.array([0, 5, 0, 6]).T,
-    #     'o2': np.array([2, 0, 3, 0]).T,
-    # }
-    #
-    # y = np.array([3])
-    # backprop(model, y, fwd)
+    train_cnn()
+    plot_charts(models['cnn'], 'cnn')
